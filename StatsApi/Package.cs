@@ -9,6 +9,7 @@ namespace StatsApi
     {
         public string PackageName { get; set; }
         public string Version { get; set; }
+        public DateTime LastUpdated { get; set; }
 
         public bool Equals(Package other)
         {
@@ -45,6 +46,8 @@ namespace StatsApi
                 writer.WriteValue(kvpair.Key.Version);
                 writer.WritePropertyName(nameof(kvpair.Value));
                 writer.WriteValue(kvpair.Value);
+                writer.WritePropertyName(nameof(kvpair.Key.LastUpdated));
+                writer.WriteValue(kvpair.Key.LastUpdated);
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();

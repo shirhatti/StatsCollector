@@ -19,9 +19,9 @@ namespace StatsApi
         private static readonly string NuGetStatsUri = "https://www.nuget.org/stats/reports/packages/{0}";
 
         [FunctionName("UpdateNuGetStats")]
-        public static async System.Threading.Tasks.Task RunAsync([TimerTrigger("0 0 0 * * ?")]TimerInfo myTimer, TraceWriter log)
+        public static async System.Threading.Tasks.Task RunAsync([TimerTrigger("0 45 1 * * *")]TimerInfo myTimer, TraceWriter log)
         {
-            log.Info("Retrieveing packages.csv at ", DateTime.Now.ToString());
+            log.Info("Retrieveing packages.csv at " + DateTime.Now.ToString());
             var packageNames = new List<string>();
             var packageStats = new Dictionary<Package, int>();
 
@@ -68,7 +68,7 @@ namespace StatsApi
             }
 
             // Query NuGet to download stats for every package that we ship
-            log.Info("Starting NuGet stat generation at ", DateTime.Now.ToString());
+            log.Info("Starting NuGet stat generation at " + DateTime.Now.ToString());
             foreach (var packageName in packageNames)
             {
                 var Uri = new Uri(string.Format(NuGetStatsUri, packageName));
@@ -87,16 +87,17 @@ namespace StatsApi
                     {
                         try
                         {
-                            JObject nugetStatsResponse = (JObject)JObject.ReadFrom(jsonReader);
-                            IList<JToken> statTokens = nugetStatsResponse["Facts"].Children().ToList();
-
+                            var nugetStatsResponse = (JObject)JObject.ReadFrom(jsonReader);
+                            var statTokens = nugetStatsResponse["Facts"].Children().ToList();
+                            var lastUpdated = nugetStatsResponse["LastUpdatedUtc"].Value<DateTime>();
                             foreach (var statToken in statTokens)
                             {
                                 var downloadCount = (int)statToken["Amount"];
                                 var package = new Package
                                 {
                                     PackageName = packageName,
-                                    Version = (string)statToken["Dimensions"]["Version"]
+                                    Version = (string)statToken["Dimensions"]["Version"],
+                                    LastUpdated = lastUpdated
                                 };
                                 if (packageStats.ContainsKey(package))
                                 {
@@ -118,20 +119,20 @@ namespace StatsApi
                 }
             }
 
-            JsonSerializerSettings settings = new JsonSerializerSettings { Converters = new[] { new PackageDictionaryJsonConverter() } };
-            string json = JsonConvert.SerializeObject(packageStats, settings);
+            var settings = new JsonSerializerSettings { Converters = new[] { new PackageDictionaryJsonConverter() } };
+            var json = JsonConvert.SerializeObject(packageStats, settings);
 
             // Archive this data in blob storage
-            log.Info("Saving to Azure blob storage at ", DateTime.Now.ToString());
+            log.Info("Saving to Azure blob storage at " + DateTime.Now.ToString());
             string storageConnectionString = Environment.GetEnvironmentVariable("StorageConnectionString");
 
-            CloudStorageAccount account = CloudStorageAccount.Parse(storageConnectionString);
-            CloudBlobClient serviceClient = account.CreateCloudBlobClient();
+            var account = CloudStorageAccount.Parse(storageConnectionString);
+            var serviceClient = account.CreateCloudBlobClient();
 
             var container = serviceClient.GetContainerReference("nugetstats");
             await container.CreateIfNotExistsAsync();
 
-            CloudBlockBlob blob = container.GetBlockBlobReference(DateTime.Now.ToShortDateString() + ".json");
+            var blob = container.GetBlockBlobReference(DateTime.Now.ToString("yyyy/MM/dd") + ".json");
             await blob.UploadTextAsync(json);
             /********** END **********/
             return;
